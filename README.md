@@ -1,4 +1,4 @@
-# Opticus
+# Text-to-Image
 
 An educational project for understanding text-to-image generation using **Flow Matching** and **Diffusion Transformers (DiT)**.
 
@@ -15,12 +15,12 @@ uv run jupyter notebook notebooks/
 ## Project Structure
 
 ```
-opticus/
+text-to-image/
 ├── notebooks/
 │   ├── 01_flow_matching_basics.ipynb  # Phase 1: Unconditional generation
 │   ├── 02_diffusion_transformer.ipynb # Phase 2: DiT architecture
 │   └── 03_class_conditioning.ipynb    # Phase 3: Class-conditional + CFG
-└── opticus/
+└── text_to_image/
     ├── flow.py      # Flow matching training logic
     ├── dit.py       # Diffusion Transformer architecture
     ├── models.py    # CNN/U-Net architectures
@@ -57,7 +57,7 @@ Control which digit gets generated using class labels and Classifier-Free Guidan
 - **CFG formula**: `v = v_uncond + scale × (v_cond - v_uncond)`
 
 ```python
-from opticus import ConditionalDiT, sample_conditional
+from text_to_image import ConditionalDiT, sample_conditional
 
 model = ConditionalDiT(num_classes=10)
 # ... train model ...

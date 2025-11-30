@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "opticus"
+name = "text-to-image"
 version = "0.1.0"
 description = "Educational project for understanding text-to-image generation with Flow Matching and DiT"
 readme = "README.md"

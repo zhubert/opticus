@@ -1,6 +1,6 @@
 version: 1
 project:
-  title: "Opticus: Understanding Text-to-Image Generation"
+  title: "Text-to-Image: Understanding Text-to-Image Generation"
   authors:
     - name: "Zack Hubert"
   exclude:
@@ -9,7 +9,7 @@ project:
     - "**.ipynb_checkpoints"
     - .git
     - README.md
-  github: zhubert/opticus
+  github: zhubert/text-to-image
   toc:
     - file: intro.md
     - file: notebooks/01_flow_matching_basics.ipynb
@@ -18,5 +18,5 @@ project:
       title: "Phase 2: Diffusion Transformer"
 site:
   options:
-    logo: opticus.png
+    logo: text-to-image.png
   template: book-theme

@@ -11,7 +11,7 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from tqdm import tqdm
 
-from opticus.flow import FlowMatching
+from text_to_image.flow import FlowMatching
 
 
 def get_device() -> torch.device:

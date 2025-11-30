@@ -1,4 +1,4 @@
-# Opticus: Understanding Text-to-Image Generation
+# Text-to-Image: Understanding Text-to-Image Generation
 
 An educational project to learn how AI generates images from text prompts, using **Flow Matching** and **Diffusion Transformers (DiT)**.
 
@@ -133,7 +133,7 @@ Higher resolution generations, complete understanding of modern text-to-image.
 ## Project Structure
 
 ```
-opticus/
+text-to-image/
 ├── README.md
 ├── PROJECT.md
 ├── pyproject.toml
@@ -143,7 +143,7 @@ opticus/
 │   ├── 03_class_conditioning.ipynb
 │   ├── 04_text_conditioning.ipynb
 │   └── 05_latent_diffusion.ipynb
-└── opticus/
+└── text_to_image/
     ├── __init__.py
     ├── flow.py          # Flow matching logic
     ├── dit.py           # DiT architecture

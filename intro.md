@@ -1,4 +1,4 @@
-# Opticus
+# Text-to-Image
 
 **An educational journey through text-to-image generation**
 
@@ -16,16 +16,12 @@ This project teaches the core concepts behind text-to-image generation through 5
 | 4 | Text Conditioning | CLIP embeddings, cross-attention |
 | 5 | Latent Space | VAE compression, scaling up |
 
-## Why "Opticus"?
-
-A play on **Optimus Prime** - because this project has a robot toy aesthetic, and it's all about **optics** (vision/image generation).
-
 ## Getting Started
 
 ```bash
 # Clone and install
-git clone https://github.com/zhubert/opticus.git
-cd opticus
+git clone https://github.com/zhubert/text-to-image.git
+cd text-to-image
 uv sync
 
 # Run the first notebook

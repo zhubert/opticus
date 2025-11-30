@@ -1,5 +1,5 @@
 def main():
-    print("Hello from opticus!")
+    print("Hello from text-to-image!")
 
 
 if __name__ == "__main__":
