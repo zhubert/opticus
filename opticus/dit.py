@@ -7,6 +7,11 @@ Phase 2 replaces the simple CNN with a transformer architecture that:
 3. Applies adaptive layer norm (adaLN) for timestep conditioning
 4. Predicts the velocity field via transformer blocks
 
+Phase 3 adds class-conditional generation:
+1. Adds class embedding (0-9 for MNIST digits)
+2. Combines class embedding with timestep embedding
+3. Supports classifier-free guidance (CFG) via label dropout
+
 Reference: "Scalable Diffusion Models with Transformers" (Peebles & Xie, 2022)
 https://arxiv.org/abs/2212.09748
 """
@@ -389,6 +394,222 @@ class DiT(nn.Module):
 
         # Get timestep conditioning
         cond = self.time_embed(t)  # (B, cond_dim)
+
+        # Process through transformer blocks
+        for block in self.blocks:
+            x = block(x, cond)
+
+        # Final projection
+        x = self.final_norm(x)
+        x = self.final_proj(x)  # (B, num_patches, patch_dim)
+
+        # Unpatchify to image
+        x = self.unpatchify(x)  # (B, C, H, W)
+
+        return x
+
+
+# =============================================================================
+# Phase 3: Class-Conditional DiT
+# =============================================================================
+
+
+class ClassEmbedding(nn.Module):
+    """
+    Embed discrete class labels into continuous vectors.
+
+    For MNIST, we have 10 classes (digits 0-9). Each class gets mapped to
+    a learnable embedding vector that the model uses to understand what
+    digit to generate.
+
+    Similar to word embeddings in NLP: just as "cat" → vector, here "7" → vector.
+    """
+
+    def __init__(self, num_classes: int, embed_dim: int):
+        """
+        Args:
+            num_classes: Number of classes (10 for MNIST).
+            embed_dim: Dimension of embedding vectors (matches timestep embed).
+        """
+        super().__init__()
+        # Standard learnable embedding table
+        # +1 for the "null" class used during CFG (unconditional generation)
+        self.embed = nn.Embedding(num_classes + 1, embed_dim)
+        self.num_classes = num_classes
+        self.null_class = num_classes  # Index for unconditional
+
+    def forward(self, labels: Tensor) -> Tensor:
+        """
+        Args:
+            labels: Class indices of shape (B,). Values in [0, num_classes-1],
+                   or num_classes for unconditional (null class).
+
+        Returns:
+            Class embeddings of shape (B, embed_dim).
+        """
+        return self.embed(labels)
+
+
+class ConditionalDiT(nn.Module):
+    """
+    Diffusion Transformer with class conditioning for controlled generation.
+
+    Architecture extends DiT by:
+    1. Adding a class embedding that's summed with timestep embedding
+    2. The combined embedding conditions all transformer blocks via adaLN
+    3. During training, randomly drop class labels for classifier-free guidance
+
+    Key insight: By training with occasional "null" class (no conditioning),
+    the model learns both conditional and unconditional generation. At inference,
+    we can blend both predictions to achieve stronger conditioning.
+
+    The conditioning formula is simple:
+        combined_embedding = timestep_embedding + class_embedding
+
+    This combined vector then modulates every layer through adaLN, telling
+    the model both "how noisy is this?" (timestep) and "what should I make?" (class).
+    """
+
+    def __init__(
+        self,
+        num_classes: int = 10,
+        img_size: int = 28,
+        patch_size: int = 4,
+        in_channels: int = 1,
+        embed_dim: int = 256,
+        depth: int = 6,
+        num_heads: int = 8,
+        mlp_ratio: float = 4.0,
+        dropout: float = 0.0,
+    ):
+        """
+        Args:
+            num_classes: Number of classes for conditioning (10 for MNIST).
+            img_size: Input image size (assumes square images).
+            patch_size: Size of each patch (assumes square patches).
+            in_channels: Number of input channels.
+            embed_dim: Transformer embedding dimension.
+            depth: Number of transformer blocks.
+            num_heads: Number of attention heads.
+            mlp_ratio: MLP hidden dim = embed_dim * mlp_ratio.
+            dropout: Dropout rate.
+        """
+        super().__init__()
+
+        self.num_classes = num_classes
+        self.img_size = img_size
+        self.patch_size = patch_size
+        self.in_channels = in_channels
+        self.embed_dim = embed_dim
+
+        # Patch embedding
+        self.patch_embed = PatchEmbed(img_size, patch_size, in_channels, embed_dim)
+        num_patches = self.patch_embed.num_patches
+        grid_size = self.patch_embed.grid_size
+
+        # Positional embedding
+        self.pos_embed = SinusoidalPosEmb2D(embed_dim, grid_size)
+
+        # Conditioning embeddings
+        cond_dim = embed_dim * 4
+        self.time_embed = TimestepEmbedding(embed_dim, cond_dim)
+        self.class_embed = ClassEmbedding(num_classes, cond_dim)
+
+        # Transformer blocks
+        self.blocks = nn.ModuleList([
+            DiTBlock(embed_dim, num_heads, cond_dim, mlp_ratio, dropout)
+            for _ in range(depth)
+        ])
+
+        # Final layers
+        self.final_norm = nn.LayerNorm(embed_dim)
+
+        # Project back to patch pixels
+        patch_dim = patch_size * patch_size * in_channels
+        self.final_proj = nn.Linear(embed_dim, patch_dim)
+
+        # Initialize weights
+        self._init_weights()
+
+    def _init_weights(self):
+        """Initialize weights following DiT paper recommendations."""
+        def _basic_init(module):
+            if isinstance(module, nn.Linear):
+                nn.init.xavier_uniform_(module.weight)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+
+        self.apply(_basic_init)
+
+        # Zero-init the final projection for stable training
+        nn.init.zeros_(self.final_proj.weight)
+        nn.init.zeros_(self.final_proj.bias)
+
+        # Initialize class embeddings with small values
+        nn.init.normal_(self.class_embed.embed.weight, std=0.02)
+
+    def unpatchify(self, x: Tensor) -> Tensor:
+        """
+        Convert patch predictions back to image.
+
+        Args:
+            x: Patch predictions of shape (B, num_patches, patch_dim)
+
+        Returns:
+            Image of shape (B, C, H, W)
+        """
+        B = x.shape[0]
+        p = self.patch_size
+        h = w = self.img_size // p
+        c = self.in_channels
+
+        x = x.view(B, h, w, p, p, c)
+        x = x.permute(0, 5, 1, 3, 2, 4)
+        x = x.reshape(B, c, h * p, w * p)
+
+        return x
+
+    def forward(
+        self,
+        x: Tensor,
+        t: Tensor,
+        y: Tensor | None = None,
+    ) -> Tensor:
+        """
+        Predict velocity field given noised image, timestep, and optional class.
+
+        Args:
+            x: Noised images of shape (B, C, H, W).
+            t: Timesteps in [0, 1] of shape (B,).
+            y: Class labels of shape (B,). If None, uses null class (unconditional).
+               Values should be in [0, num_classes-1].
+
+        Returns:
+            Predicted velocity of shape (B, C, H, W).
+        """
+        batch_size = x.shape[0]
+
+        # Patchify and embed
+        x = self.patch_embed(x)  # (B, num_patches, embed_dim)
+
+        # Add positional embeddings
+        x = self.pos_embed(x)
+
+        # Get timestep conditioning
+        time_cond = self.time_embed(t)  # (B, cond_dim)
+
+        # Get class conditioning
+        if y is None:
+            # Use null class for unconditional generation
+            y = torch.full(
+                (batch_size,), self.class_embed.null_class,
+                dtype=torch.long, device=x.device
+            )
+        class_cond = self.class_embed(y)  # (B, cond_dim)
+
+        # Combine conditioning: simple addition works well
+        # Both embeddings live in the same space and jointly modulate the network
+        cond = time_cond + class_cond  # (B, cond_dim)
 
         # Process through transformer blocks
         for block in self.blocks:

@@ -10,6 +10,10 @@ Key concepts:
 - Training: Learn to predict v given x_t and t
 - Sampling: Start from noise (t=1), integrate backward to data (t=0)
 
+Phase 3 adds:
+- Class-conditional training with optional class labels
+- Classifier-free guidance (CFG) via random label dropout
+
 Reference: https://arxiv.org/abs/2210.02747 (Flow Matching for Generative Modeling)
 """
 
@@ -125,6 +129,69 @@ class FlowMatching:
         velocity_pred = model(x_t, t)
 
         # MSE loss
+        loss = torch.mean((velocity_pred - velocity_target) ** 2)
+
+        return loss
+
+    def get_conditional_loss(
+        self,
+        model: torch.nn.Module,
+        x_0: Tensor,
+        labels: Tensor,
+        device: torch.device,
+        label_drop_prob: float = 0.1,
+        num_classes: int = 10,
+    ) -> Tensor:
+        """
+        Compute flow matching loss with class-conditional training and CFG dropout.
+
+        The key to Classifier-Free Guidance (CFG):
+        - During training, randomly drop class labels with probability `label_drop_prob`
+        - When dropped, we use a special "null" class (index = num_classes)
+        - This trains the model to work both conditionally AND unconditionally
+        - At inference, we blend both predictions for stronger conditioning
+
+        Why this works:
+        - With label: model learns p(velocity | x_t, t, class)
+        - Without label: model learns p(velocity | x_t, t) - the unconditional distribution
+        - At inference: output = uncond + scale * (cond - uncond)
+        - The (cond - uncond) term amplifies the "class-specific" part of the prediction
+
+        Args:
+            model: Neural network that predicts velocity given (x_t, t, class).
+            x_0: Batch of clean data, shape (B, C, H, W).
+            labels: Class labels, shape (B,) with values in [0, num_classes-1].
+            device: Device for computations.
+            label_drop_prob: Probability of dropping class label (default 0.1 = 10%).
+            num_classes: Number of classes (10 for MNIST).
+
+        Returns:
+            Scalar loss tensor.
+        """
+        batch_size = x_0.shape[0]
+
+        # Sample noise from standard normal
+        x_1 = torch.randn_like(x_0)
+
+        # Sample random timesteps
+        t = self.sample_timesteps(batch_size, device)
+
+        # Get interpolated samples and target velocity
+        x_t, velocity_target = self.forward_process(x_0, x_1, t)
+
+        # === Classifier-Free Guidance: Random Label Dropout ===
+        # Create a mask: True = drop label (use null class)
+        drop_mask = torch.rand(batch_size, device=device) < label_drop_prob
+
+        # Replace dropped labels with the null class index
+        # null_class = num_classes (one past the last valid class)
+        labels_with_dropout = labels.clone()
+        labels_with_dropout[drop_mask] = num_classes
+
+        # Model predicts velocity with (potentially dropped) class conditioning
+        velocity_pred = model(x_t, t, labels_with_dropout)
+
+        # MSE loss (same as unconditional)
         loss = torch.mean((velocity_pred - velocity_target) ** 2)
 
         return loss

@@ -14,7 +14,7 @@ This project builds understanding progressively, starting simple and adding comp
 
 ---
 
-## Phase 1: Unconditional Flow Matching
+## Phase 1: Unconditional Flow Matching ✓
 
 **Goal**: Generate images from noise (no conditioning yet)
 
@@ -35,7 +35,7 @@ Generate random (blurry) digits from pure noise.
 
 ---
 
-## Phase 2: Add the DiT Architecture
+## Phase 2: Add the DiT Architecture ✓
 
 **Goal**: Replace simple CNN with a proper Diffusion Transformer
 
@@ -55,7 +55,7 @@ Sharper generated digits, understand DiT architecture.
 
 ---
 
-## Phase 3: Class-Conditional Generation
+## Phase 3: Class-Conditional Generation ✓
 
 **Goal**: Control what digit gets generated
 
@@ -64,9 +64,24 @@ Sharper generated digits, understand DiT architecture.
 - Classifier-free guidance (CFG) - the trick that makes generations pop
 
 ### Implementation
-1. Add class embedding (0-9) to timestep embedding
+1. Add class embedding (0-9) to timestep embedding via `ClassEmbedding`
 2. During training: randomly drop class label 10% of time (for CFG)
 3. During sampling: blend conditional and unconditional predictions
+
+### Key Components
+- `ConditionalDiT`: DiT with class embedding support
+- `ClassEmbedding`: Learnable embeddings for each class + null class
+- `get_conditional_loss()`: Training loss with label dropout
+- `sample_conditional()`: CFG sampling
+- `sample_each_class()`: Generate samples for all classes
+
+### CFG Formula
+```
+v_guided = v_uncond + scale × (v_cond - v_uncond)
+```
+- `scale = 1.0`: Pure conditional (no guidance)
+- `scale = 3.0-5.0`: Typical range for good results
+- `scale > 7.0`: May oversaturate
 
 ### Outcome
 "Generate a 7" → produces a 7.
