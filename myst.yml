@@ -19,4 +19,5 @@ project:
 site:
   options:
     logo: text-to-image.png
+    logo_dark: text-to-image.png
   template: book-theme
