@@ -20,14 +20,16 @@ text-to-image/
 │   ├── 01_flow_matching_basics.ipynb  # Phase 1: Unconditional generation
 │   ├── 02_diffusion_transformer.ipynb # Phase 2: DiT architecture
 │   ├── 03_class_conditioning.ipynb    # Phase 3: Class-conditional + CFG
-│   └── 04_text_conditioning.ipynb     # Phase 4: Text-conditional + CLIP
+│   ├── 04_text_conditioning.ipynb     # Phase 4: Text-conditional + CLIP
+│   └── 05_latent_diffusion.ipynb      # Phase 5: Latent diffusion with VAE
 └── text_to_image/
     ├── flow.py         # Flow matching training logic
     ├── dit.py          # DiT, ConditionalDiT, TextConditionalDiT
     ├── text_encoder.py # CLIP text encoder wrapper
     ├── models.py       # CNN/U-Net architectures
     ├── sampling.py     # Image generation (unconditional, class, text CFG)
-    └── train.py        # Training utilities
+    ├── train.py        # Training utilities
+    └── vae.py          # Variational autoencoder for latent space
 ```
 
 ## Phases
@@ -96,8 +98,33 @@ samples = sample_text_conditional(
 )
 ```
 
+### Phase 5: Latent Diffusion
+
+Move from pixel space to compressed latent space for efficiency and scalability.
+
+- **VAE encoder**: Compress images to smaller latent representations (e.g., 32×32×3 → 8×8×4)
+- **Latent flow matching**: Train DiT on latents instead of pixels (48× fewer dimensions)
+- **VAE decoder**: Decode generated latents back to full-resolution images
+- **Scaling insight**: This is how Stable Diffusion achieves high-resolution generation
+
+```python
+from text_to_image import VAE, ConditionalDiT, sample_latent_conditional
+
+vae = VAE(latent_channels=4)
+model = ConditionalDiT(in_channels=4, img_size=8)  # Works on latents
+# ... train VAE, then train model on encoded latents ...
+
+# Generate in latent space, decode to pixels
+samples = sample_latent_conditional(
+    model, vae,
+    class_labels=[0, 1, 2, 3],
+    latent_shape=(4, 8, 8),
+    cfg_scale=3.0
+)
+```
+
 ## Requirements
 
-- Python 3.11+
+- Python 3.12+
 - PyTorch 2.0+
 - Apple Silicon (MPS), CUDA, or CPU
